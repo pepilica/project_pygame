@@ -1,28 +1,33 @@
 import pygame
-import copy
-from random import randint
-from queue import Queue
 import random
 import os
 import sys
 
 
 GAME = None
-LEVELS = {'Easy': [(9, 9), 10], 'Medium': [(16, 16), 40], 'Difficult': [(16, 30), 99]}
+LEVELS = {'Easy': [(9, 9), 10], 'Medium': [(16, 16), 40], 'Hard': [(25, 25), 99]}
 DIFFICULTY = None
 SCREEN = None
+sys.setrecursionlimit(10000)
+START = [False, False]
+FILL = False
 
 
-def initialize():
-    global SCREEN, DIFFICULTY
+def initialize(start=True):
+    global SCREEN
     SCREEN = pygame.display.set_mode((640, 480))
-    DIFFICULTY = 'Easy'
-    pygame.init()
+    if start:
+        pygame.init()
+
+
+def get_resolution():
+    return SCREEN.get_size()
 
 
 def set_resolution(w, h):
     global SCREEN
-    SCREEN = pygame.display.set_mode(w, h)
+    SCREEN = pygame.display.set_mode((w, h))
+    print((w, h) == pygame.display.get_surface().get_size())
 
 
 def set_difficulty(dif):
@@ -32,13 +37,13 @@ def set_difficulty(dif):
 
 def reset():
     global GAME
-    initialize()
+    initialize(False)
     GAME = None
 
 
 def terminate():
     pygame.quit()
-    sys.exit()
+    sys.exit(1)
 
 
 def load_image(name, colorkey=None):
@@ -53,32 +58,33 @@ def load_image(name, colorkey=None):
     return image
 
 
-class Settings:
-    def __init__(self):
-        pass
-
-
 class StartScreen:
     def __init__(self):
         global SCREEN
+        SCREEN = pygame.display.set_mode((640, 480))
         h, w = SCREEN.get_size()
         screen = SCREEN
         font = pygame.font.Font(None, 30)
         running = True
+        easy = Button('Easy', w // 2, 150, 150, 40, (0, 127, 0), (100, 255, 100), screen, main)
+        medium = Button('Medium', w // 2, 200, 150, 40, (127, 127, 0), (255, 255, 100), screen, main)
+        hard = Button('Hard', w // 2, 250, 150, 40, (127, 0, 0), (255, 100, 100), screen, main)
+        exit = Button("Выйти", w // 2, 350, 150, 40, (0, 0, 127), (100, 100, 255), screen, terminate)
         while running:
-            top = 30
+            top = 50
             for event in pygame.event.get():
-                if event == pygame.QUIT:
+                if event.type == pygame.QUIT:
                     running = False
             screen.fill((0, 0, 0))
             string_rendered = font.render('Сапер', 1, pygame.Color('white'))
             intro_rect = string_rendered.get_rect()
-            top += 10
-            intro_rect.top = top
+            easy.update()
+            medium.update()
+            hard.update()
+            exit.update()
+            intro_rect.y = 50
             intro_rect.x = w // 2 + intro_rect.width // 2
-            top += intro_rect.height
             screen.blit(string_rendered, intro_rect)
-            button('Начать игру', w // 2, top, 150, 40, (127, 127, 127), (200, 200, 200), screen, main)
             top += 60
             pygame.display.flip()
         terminate()
@@ -101,6 +107,9 @@ class Cell(object):
 
 
 class Minesweeper(tuple):
+    def __new__(cls, board):
+        return super(Minesweeper, cls).__new__(cls, board)
+
     def __init__(self, tup):
         super().__init__()
         self.is_playing = True
@@ -144,7 +153,8 @@ class Minesweeper(tuple):
         y -= self.top
         x //= self.cell_size
         y //= self.cell_size
-        if 0 <= x <= len(self[0]) and 0 <= y <= len(self):
+        if 0 <= x < len(self[0]) and 0 <= y < len(self):
+            print(x, y)
             return x, y
         return None
 
@@ -208,6 +218,7 @@ class Minesweeper(tuple):
         return False
 
     def place_mine(self, row_id, col_id):
+        print(self[row_id][col_id] is None)
         self[row_id][col_id].place_mine()
 
     def count_surrounding(self, row_id, col_id):
@@ -241,21 +252,23 @@ class Minesweeper(tuple):
 
 
 def create_board(width, height):
-    board = Minesweeper(tuple([tuple([Cell(False) for i in range(width)])
-                               for j in range(height)]))
+    board = Minesweeper(tuple(tuple(Cell(False) for i in range(width))
+                              for j in range(height)))
     return board
 
 
 def reset_board():
-    global GAME
+    global GAME, START, FILL
+    fill, START = False, [False] * 2
     size = LEVELS[DIFFICULTY][0]
     GAME = create_board(*size)
 
 
 def create_mines(board, mines, x, y):
     if x is not None and y is not None:
-        width, height = len(board), len(board[0])
+        width, height = len(board[0]), len(board)
         available_pos = list(range((height - 1) * (width - 1)))
+        print(max(available_pos))
         available_pos.remove(y * height + x)
         for i in range(mines):
             new_pos = random.choice(available_pos)
@@ -265,23 +278,35 @@ def create_mines(board, mines, x, y):
     return board
 
 
-def button(msg, x, y, w, h, ic, ac, screen, action=None):
-    global DIFFICULTY
-    mouse = pygame.mouse.get_pos()
-    click = pygame.mouse.get_pressed()
-    if x + w > mouse[0] > x and y + h > mouse[1] > y:
-        pygame.draw.rect(screen, ac, (x, y, w, h))
-        if click[0] == 1 and action is not None:
-            if msg in LEVELS.keys():
-                DIFFICULTY = msg
-            action()
-    else:
-        pygame.draw.rect(screen, ic, (x, y, w, h))
+class Button:
+    def __init__(self, msg, x, y, w, h, ic, ac, screen, action=None):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.ic = ic
+        self.ac = ac
+        self.screen = screen
+        self.action = action
+        self.msg = msg
+        print('Created')
 
-    smallText = pygame.font.Font("freesansbold.ttf", 20)
-    textSurf, textRect = text_objects(msg, smallText)
-    textRect.center = ((x + (w / 2)), (y + (h / 2)))
-    screen.blit(textSurf, textRect)
+    def update(self):
+        global DIFFICULTY
+        mouse = pygame.mouse.get_pos()
+        click = pygame.mouse.get_pressed()
+        if self.x + self.w > mouse[0] > self.x and self.y + self.h > mouse[1] > self.y:
+            pygame.draw.rect(self.screen, self.ac, (self.x, self.y, self.w, self.h))
+            if click[0] == 1 and self.action is not None:
+                if self.msg in LEVELS.keys():
+                    DIFFICULTY = self.msg
+                self.action()
+        else:
+            pygame.draw.rect(self.screen, self.ic, (self.x, self.y, self.w, self.h))
+        smallText = pygame.font.Font("freesansbold.ttf", 20)
+        textSurf, textRect = text_objects(self.msg, smallText)
+        textRect.center = ((self.x + (self.w / 2)), (self.y + (self.h / 2)))
+        self.screen.blit(textSurf, textRect)
 
 
 def text_objects(text, font):
@@ -290,53 +315,53 @@ def text_objects(text, font):
 
 
 def main():
-    global GAME
+    global GAME, START, FILL
     screen = SCREEN
-    dif = DIFFICULTY
-    size, mines = LEVELS[dif]
-    v = 10
+    started1 = START[1]
+    size, mines = LEVELS[DIFFICULTY]
+    set_resolution(size[0] * 30 + 10 * 2, size[1] * 30 + 125)
     fps = 60
-    fill = False
-    GAME = create_board(*size)
+    fill = FILL
+    GAME = create_board(size[0], size[1])
     running = True
     a = pygame.time.Clock()
-    x, y, = 0, 0
-    dx, dy = 0, 0
+    restart = Button("Заново", size[0] * 15 - 50, 5, 100, 50, (255, 255, 75), (255, 255, 75), screen, reset_board)
+    return_btn = Button('<', 5, 5, 50, 50, (255, 0, 0), (127, 75, 75), screen, StartScreen)
+    started = START[1]
     while running:
         moving = False
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and not moving:
-                    moving = True
-                    x, y = event.pos
-            if event.type == pygame.MOUSEBUTTONUP:
-                moving = False
-                if event.button == 1:
-                    if not fill and GAME.get_cell(event.pos):
-                        GAME = create_mines(GAME, mines, *GAME.get_cell(event.pos))
-                        fill = True
-                    GAME.get_click(event.pos, True)
-                if event.button == 3:
-                    if not fill and GAME.get_cell(event.pos):
-                        GAME = create_mines(GAME, mines, *GAME.get_cell(event.pos))
-                        fill = True
-                    GAME.get_click(event.pos, False)
-            if event.type == pygame.MOUSEMOTION:
-                if moving:
-                    x1, y1 = event.pos
-                    dx, dy = x1 - x, y1 - y
-        print(dx, dy)
+            if started and started1:
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1 and not moving:
+                        moving = True
+                if event.type == pygame.MOUSEBUTTONUP:
+                    moving = False
+                    if event.button == 1:
+                        if not fill and GAME.get_cell(event.pos):
+                            GAME = create_mines(GAME, mines, *GAME.get_cell(event.pos))
+                            fill = True
+                            FILL = True
+                        GAME.get_click(event.pos, True)
+                    if event.button == 3:
+                        GAME.get_click(event.pos, False)
         screen.fill((0, 0, 0))
+        restart.update()
+        return_btn.update()
         GAME.render(screen)
-        button("GO!", 160, 10, 50, 50, (0, 0, 127), (0, 0, 255), screen, main)
         if GAME.is_solved:
             print("Вы выиграли")
         elif not GAME.is_playing:
             print("Вы проиграли")
-        a.tick(v)
+        a.tick(fps)
         pygame.display.flip()
+        if started:
+            START[1] = True
+            started1 = True
+        START[0] = True
+        started = True
     terminate()
 
 
