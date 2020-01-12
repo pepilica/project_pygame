@@ -4,6 +4,18 @@ import os
 import sys
 
 
+def load_image(name, colorkey=None):
+    fullname = os.path.join('visual', name)
+    image = pygame.image.load(fullname).convert()
+    if colorkey is not None:
+        if colorkey == -1:
+            colorkey = image.get_at((0, 0))
+        image.set_colorkey(colorkey)
+    else:
+        image = image.convert_alpha()
+    return image
+
+
 GAME = None
 LEVELS = {'Easy': [(9, 9), 10], 'Medium': [(16, 16), 40], 'Hard': [(25, 25), 99]}
 DIFFICULTY = None
@@ -11,6 +23,8 @@ SCREEN = None
 sys.setrecursionlimit(10000)
 START = [False, False]
 FILL = False
+TEXTURE = load_image('texture.png')
+CELL
 
 
 def initialize(start=True):
@@ -30,32 +44,18 @@ def set_resolution(w, h):
     print((w, h) == pygame.display.get_surface().get_size())
 
 
+def reset():
+    initialize(False)
+
+
 def set_difficulty(dif):
     global DIFFICULTY
     DIFFICULTY = dif[::]
 
 
-def reset():
-    global GAME
-    initialize(False)
-    GAME = None
-
-
 def terminate():
     pygame.quit()
-    sys.exit(1)
-
-
-def load_image(name, colorkey=None):
-    fullname = os.path.join('visual', name)
-    image = pygame.image.load(fullname).convert()
-    if colorkey is not None:
-        if colorkey == -1:
-            colorkey = image.get_at((0, 0))
-        image.set_colorkey(colorkey)
-    else:
-        image = image.convert_alpha()
-    return image
+    sys.exit(0)
 
 
 class StartScreen:
@@ -115,7 +115,7 @@ class Minesweeper(tuple):
         self.is_playing = True
         self.left = 10
         self.top = 100
-        self.cell_size = 30
+        self.cell_size = 16
 
     # настройка внешнего вида
     def set_view(self, left, top, cell_size):
@@ -205,6 +205,9 @@ class Minesweeper(tuple):
                     for elem in row:
                         if not elem.is_flagged and elem.is_mine:
                             elem.show()
+            elif cell.is_flagged:
+                cell.is_flagged = False
+                cell.is_visible = False
             elif self.count_surrounding(row_id, col_id) == 0:
                 for (surr_row, surr_col) in self.get_neighbours(row_id, col_id):
                     if self.is_in_range(surr_row, surr_col):
@@ -259,7 +262,7 @@ def create_board(width, height):
 
 def reset_board():
     global GAME, START, FILL
-    fill, START = False, [False] * 2
+    fill, START = False, [False, False]
     size = LEVELS[DIFFICULTY][0]
     GAME = create_board(*size)
 
@@ -269,7 +272,7 @@ def create_mines(board, mines, x, y):
         width, height = len(board[0]), len(board)
         available_pos = list(range((height - 1) * (width - 1)))
         print(max(available_pos))
-        available_pos.remove(y * height + x)
+        available_pos.remove(y * (height - 1) + x)
         for i in range(mines):
             new_pos = random.choice(available_pos)
             available_pos.remove(new_pos)
@@ -303,7 +306,7 @@ class Button:
                 self.action()
         else:
             pygame.draw.rect(self.screen, self.ic, (self.x, self.y, self.w, self.h))
-        smallText = pygame.font.Font("freesansbold.ttf", 20)
+        smallText = pygame.font.Font(None, 20)
         textSurf, textRect = text_objects(self.msg, smallText)
         textRect.center = ((self.x + (self.w / 2)), (self.y + (self.h / 2)))
         self.screen.blit(textSurf, textRect)
@@ -315,20 +318,21 @@ def text_objects(text, font):
 
 
 def main():
-    global GAME, START, FILL
+    global GAME
     screen = SCREEN
-    started1 = START[1]
+    started1 = False
     size, mines = LEVELS[DIFFICULTY]
-    set_resolution(size[0] * 30 + 10 * 2, size[1] * 30 + 125)
+    set_resolution(size[0] * 16 + 10 * 2, size[1] * 16 + 125)
     fps = 60
-    fill = FILL
+    fill = False
     GAME = create_board(size[0], size[1])
     running = True
     a = pygame.time.Clock()
-    restart = Button("Заново", size[0] * 15 - 50, 5, 100, 50, (255, 255, 75), (255, 255, 75), screen, reset_board)
+    restart = Button("Заново", size[0] * 15 - 50, 5, 100, 50, (255, 255, 75), (255, 255, 75), screen, main)
     return_btn = Button('<', 5, 5, 50, 50, (255, 0, 0), (127, 75, 75), screen, StartScreen)
-    started = START[1]
+    started = False
     while running:
+        CELL_TEXTURE = pygame.sprite.Group
         moving = False
         for event in pygame.event.get():
             if started and started1:
@@ -343,7 +347,6 @@ def main():
                         if not fill and GAME.get_cell(event.pos):
                             GAME = create_mines(GAME, mines, *GAME.get_cell(event.pos))
                             fill = True
-                            FILL = True
                         GAME.get_click(event.pos, True)
                     if event.button == 3:
                         GAME.get_click(event.pos, False)
@@ -358,9 +361,7 @@ def main():
         a.tick(fps)
         pygame.display.flip()
         if started:
-            START[1] = True
             started1 = True
-        START[0] = True
         started = True
     terminate()
 
