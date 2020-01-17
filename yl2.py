@@ -11,7 +11,7 @@ def load_image(name, colorkey=None):
         if colorkey == -1:
             colorkey = image.get_at((0, 0))
         image.set_colorkey(colorkey)
-    else:
+    elif colorkey is None:
         image = image.convert_alpha()
     return image
 
@@ -23,8 +23,7 @@ SCREEN = None
 sys.setrecursionlimit(10000)
 START = [False, False]
 FILL = False
-TEXTURE = load_image('texture.png')
-CELL
+EXP = pygame.sprite.Group()
 
 
 def initialize(start=True):
@@ -32,6 +31,9 @@ def initialize(start=True):
     SCREEN = pygame.display.set_mode((640, 480))
     if start:
         pygame.init()
+        pygame.mixer.init()
+        pygame.mixer.set_num_channels(100)
+        # pygame.mixer.Sound('visual/track.wav').play(2)
 
 
 def get_resolution():
@@ -106,12 +108,42 @@ class Cell(object):
         self.is_mine = True
 
 
+class AnimatedSprite(pygame.sprite.Sprite):
+    def __init__(self, sheet, columns, rows, x, y):
+        super().__init__(EXP)
+        self.frames = []
+        self.cut_sheet(sheet, columns, rows)
+        self.cur_frame = 0
+        self.image = self.frames[self.cur_frame]
+        self.rect = self.rect.move(x, y)
+
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                frame = pygame.transform.scale(sheet.subsurface(pygame.Rect(frame_location, self.rect.size)), (16, 16))
+                frame.fill((255, 255, 255, 150), None, pygame.BLEND_RGBA_MULT)
+                self.frames.append(frame.convert_alpha())
+
+    def update(self):
+        self.cur_frame = (self.cur_frame + 1)
+        if self.cur_frame < len(self.frames):
+            self.image = self.frames[self.cur_frame]
+            if self.cur_frame == 1:
+                pygame.mixer.Sound('visual/explosion.wav').play(0)
+        else:
+            self.rect = self.rect.move(-1000, -1000)
+
+
 class Minesweeper(tuple):
     def __new__(cls, board):
         return super(Minesweeper, cls).__new__(cls, board)
 
     def __init__(self, tup):
         super().__init__()
+        self.blown = []
         self.is_playing = True
         self.left = 10
         self.top = 100
@@ -123,29 +155,31 @@ class Minesweeper(tuple):
         self.top = top
         self.cell_size = cell_size
 
-    def render(self, scr):
+    def generate_explosion(self, row, col):
+        return AnimatedSprite(load_image('explosion.png'), 8, 8, col * self.cell_size + self.left, row * self.cell_size + self.top)
+
+    def render(self):
+        sprite_stack = pygame.sprite.Group()
         for y, row in enumerate(self):
             for x, elem in enumerate(row):
+                sprite = pygame.sprite.Sprite(sprite_stack)
                 if elem.is_visible:
                     if elem.is_mine:
-                        pygame.draw.ellipse(scr, (255, 0, 0), (self.left + self.cell_size * x,
-                                                               self.top + self.cell_size * y,
-                                                               self.cell_size, self.cell_size))
+                        sprite.image = load_image('mine.png', 1)
                     elif GAME.count_surrounding(y, x):
-                        font = pygame.font.Font(None, 25)
-                        text = font.render(str(GAME.count_surrounding(y, x)), 1, (100, 255, 100))
-                        scr.blit(text, (self.left + x * self.cell_size + 5, self.top + y * self.cell_size + 5))
+                        sprite.image = load_image(f'mine{GAME.count_surrounding(y, x)}.png', 1)
                     else:
-                        pygame.draw.rect(scr, (127, 127, 127), (self.left + self.cell_size * x,
-                                                                self.top + self.cell_size * y,
-                                                                self.cell_size, self.cell_size))
+                        sprite.image = load_image('empty.png', 1)
                 elif elem.is_flagged:
-                    pygame.draw.rect(scr, (0, 0, 255), (self.left + self.cell_size * x,
-                                                        self.top + self.cell_size * y,
-                                                        self.cell_size, self.cell_size))
-                pygame.draw.rect(scr, (255, 255, 255), (self.left + self.cell_size * x,
-                                                        self.top + self.cell_size * y,
-                                                        self.cell_size, self.cell_size), 1)
+                    sprite.image = load_image('flag.png', 1)
+                else:
+                    sprite.image = load_image('closed.png', 1)
+                sprite.rect = sprite.image.get_rect()
+                sprite.rect.x, sprite.rect.y = self.left + x * self.cell_size, self.top + self.cell_size * y
+        sprite_stack.draw(SCREEN)
+        for explosion in self.blown:
+            explosion.update()
+        EXP.draw(SCREEN)
 
     def get_cell(self, pos):
         x, y = pos
@@ -201,10 +235,12 @@ class Minesweeper(tuple):
             cell.show()
             if cell.is_mine and not cell.is_flagged:
                 self.is_playing = False
-                for _, row in enumerate(self):
+                self.blown.append(self.generate_explosion(row_id, col_id))
+                for num, row in enumerate(self):
                     for elem in row:
                         if not elem.is_flagged and elem.is_mine:
                             elem.show()
+                            self.blown.append(self.generate_explosion(num, row.index(elem)))
             elif cell.is_flagged:
                 cell.is_flagged = False
                 cell.is_visible = False
@@ -281,8 +317,11 @@ def create_mines(board, mines, x, y):
     return board
 
 
-class Button:
-    def __init__(self, msg, x, y, w, h, ic, ac, screen, action=None):
+class Button(pygame.sprite.Sprite):
+    def __init__(self, msg=None, x=None, y=None, w=None, h=None,
+                 ic=None, ac=None, screen=None, action=None, picture=False, way=None):
+        self.ispicture = picture
+        self.way = way
         self.x = x
         self.y = y
         self.w = w
@@ -292,24 +331,46 @@ class Button:
         self.screen = screen
         self.action = action
         self.msg = msg
+        if self.ispicture:
+            super().__init__(EXP)
+            self.image = load_image(self.way)
+            self.rect = self.image.get_rect()
+            self.rect.x, self.rect.y = self.x, self.y
+        else:
+            super().__init__()
         print('Created')
 
     def update(self):
         global DIFFICULTY
-        mouse = pygame.mouse.get_pos()
-        click = pygame.mouse.get_pressed()
-        if self.x + self.w > mouse[0] > self.x and self.y + self.h > mouse[1] > self.y:
-            pygame.draw.rect(self.screen, self.ac, (self.x, self.y, self.w, self.h))
-            if click[0] == 1 and self.action is not None:
-                if self.msg in LEVELS.keys():
-                    DIFFICULTY = self.msg
-                self.action()
+        if not self.ispicture:
+            mouse = pygame.mouse.get_pos()
+            click = pygame.mouse.get_pressed()
+            if self.x + self.w > mouse[0] > self.x and self.y + self.h > mouse[1] > self.y:
+                pygame.draw.rect(self.screen, self.ac, (self.x, self.y, self.w, self.h))
+                if click[0] == 1 and self.action is not None:
+                    if self.msg in LEVELS.keys():
+                        DIFFICULTY = self.msg
+                    self.action()
+            else:
+                pygame.draw.rect(self.screen, self.ic, (self.x, self.y, self.w, self.h))
+            smallText = pygame.font.Font(None, 20)
+            textSurf, textRect = text_objects(self.msg, smallText)
+            textRect.center = ((self.x + (self.w / 2)), (self.y + (self.h / 2)))
+            self.screen.blit(textSurf, textRect)
         else:
-            pygame.draw.rect(self.screen, self.ic, (self.x, self.y, self.w, self.h))
-        smallText = pygame.font.Font(None, 20)
-        textSurf, textRect = text_objects(self.msg, smallText)
-        textRect.center = ((self.x + (self.w / 2)), (self.y + (self.h / 2)))
-        self.screen.blit(textSurf, textRect)
+            mouse = pygame.mouse.get_pos()
+            click = pygame.mouse.get_pressed()
+            if self.x + self.w > mouse[0] > self.x and self.y + self.h > mouse[1] > self.y:
+                if click[0] == 1 and self.action is not None:
+                    if self.msg in LEVELS.keys():
+                        DIFFICULTY = self.msg
+                    self.action()
+
+    def change_pic(self, way):
+        self.way = way
+        self.image = load_image(self.way)
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = self.x, self.y
 
 
 def text_objects(text, font):
@@ -318,21 +379,22 @@ def text_objects(text, font):
 
 
 def main():
-    global GAME
+    global GAME, EXP
+    EXP = pygame.sprite.Group()
     screen = SCREEN
     started1 = False
-    size, mines = LEVELS[DIFFICULTY]
+    size, mines = LEVELS['Easy']
     set_resolution(size[0] * 16 + 10 * 2, size[1] * 16 + 125)
     fps = 60
     fill = False
     GAME = create_board(size[0], size[1])
     running = True
     a = pygame.time.Clock()
-    restart = Button("Заново", size[0] * 15 - 50, 5, 100, 50, (255, 255, 75), (255, 255, 75), screen, main)
-    return_btn = Button('<', 5, 5, 50, 50, (255, 0, 0), (127, 75, 75), screen, StartScreen)
+    return_btn = Button("<<", 5, 5, 50, 50, (127, 0, 0), (255, 100, 100), screen, StartScreen)
+    restart = Button(x=size[0] * 16 // 2, y=10, w=26, h=26,
+                     screen=screen, action=main, picture=True, way='restart_btn.png')
     started = False
     while running:
-        CELL_TEXTURE = pygame.sprite.Group
         moving = False
         for event in pygame.event.get():
             if started and started1:
@@ -350,14 +412,14 @@ def main():
                         GAME.get_click(event.pos, True)
                     if event.button == 3:
                         GAME.get_click(event.pos, False)
-        screen.fill((0, 0, 0))
-        restart.update()
-        return_btn.update()
-        GAME.render(screen)
+        screen.fill((192, 192, 192))
         if GAME.is_solved:
-            print("Вы выиграли")
+            return_btn.change_pic('restart_btn_win.png')
         elif not GAME.is_playing:
-            print("Вы проиграли")
+            return_btn.change_pic('restart_btn_lose.png')
+        return_btn.update()
+        restart.update()
+        GAME.render()
         a.tick(fps)
         pygame.display.flip()
         if started:
