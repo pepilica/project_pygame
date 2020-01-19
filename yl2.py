@@ -383,15 +383,16 @@ def main():
     EXP = pygame.sprite.Group()
     screen = SCREEN
     started1 = False
-    size, mines = LEVELS['Easy']
+    size, mines = LEVELS[DIFFICULTY]
     set_resolution(size[0] * 16 + 10 * 2, size[1] * 16 + 125)
     fps = 60
     fill = False
     GAME = create_board(size[0], size[1])
     running = True
+    finish = False
     a = pygame.time.Clock()
-    return_btn = Button("<<", 5, 5, 50, 50, (127, 0, 0), (255, 100, 100), screen, StartScreen)
-    restart = Button(x=size[0] * 16 // 2, y=10, w=26, h=26,
+    return_btn = Button("<<", 5, 10, 26, 26, (127, 0, 0), (255, 100, 100), screen, StartScreen)
+    restart = Button(x=size[0] * 16 // 2 - 26 // 2, y=10, w=26, h=26,
                      screen=screen, action=main, picture=True, way='restart_btn.png')
     started = False
     while running:
@@ -413,10 +414,12 @@ def main():
                     if event.button == 3:
                         GAME.get_click(event.pos, False)
         screen.fill((192, 192, 192))
-        if GAME.is_solved:
-            return_btn.change_pic('restart_btn_win.png')
-        elif not GAME.is_playing:
-            return_btn.change_pic('restart_btn_lose.png')
+        if GAME.is_solved and not finish:
+            restart.change_pic('restart_btn_win.png')
+            finish = True
+        elif not GAME.is_playing and not finish:
+            restart.change_pic('restart_btn_lose.png')
+            finish = True
         return_btn.update()
         restart.update()
         GAME.render()
