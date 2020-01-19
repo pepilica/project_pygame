@@ -24,16 +24,20 @@ sys.setrecursionlimit(10000)
 START = [False, False]
 FILL = False
 EXP = pygame.sprite.Group()
+TRACK = None
+CHANNEL = None
+WIDGETS = pygame.sprite.Group()
 
 
 def initialize(start=True):
-    global SCREEN
+    global SCREEN, TRACK, CHANNEL
     SCREEN = pygame.display.set_mode((640, 480))
     if start:
         pygame.init()
         pygame.mixer.init()
         pygame.mixer.set_num_channels(100)
-        # pygame.mixer.Sound('visual/track.wav').play(2)
+        TRACK = Music('visual/track.wav')
+        CHANNEL = pygame.mixer.Channel(99)
 
 
 def get_resolution():
@@ -60,6 +64,20 @@ def terminate():
     sys.exit(0)
 
 
+class Music:
+    def __init__(self, way):
+        global CHANNEL
+        self.playing = False
+        self.way = way
+
+    def change_play(self):
+        self.playing = not self.playing
+        if not self.playing:
+            CHANNEL.stop()
+        elif self.playing:
+            CHANNEL.play(pygame.mixer.Sound(self.way), loops=-1)
+
+
 class StartScreen:
     def __init__(self):
         global SCREEN
@@ -71,6 +89,8 @@ class StartScreen:
         easy = Button('Easy', w // 2, 150, 150, 40, (0, 127, 0), (100, 255, 100), screen, main)
         medium = Button('Medium', w // 2, 200, 150, 40, (127, 127, 0), (255, 255, 100), screen, main)
         hard = Button('Hard', w // 2, 250, 150, 40, (127, 0, 0), (255, 100, 100), screen, main)
+        music = Button('Музыка', 5, 350, 100, 50, (192, 192, 192), (127, 127, 127), screen, TRACK.change_play)
+        rules_btn = Button('Правила', w // 2, 300, 150, 40, (0, 127, 199), (64, 255, 255), screen, rules)
         exit = Button("Выйти", w // 2, 350, 150, 40, (0, 0, 127), (100, 100, 255), screen, terminate)
         while running:
             top = 50
@@ -84,12 +104,44 @@ class StartScreen:
             medium.update()
             hard.update()
             exit.update()
+            music.update()
+            rules_btn.update()
             intro_rect.y = 50
             intro_rect.x = w // 2 + intro_rect.width // 2
             screen.blit(string_rendered, intro_rect)
             top += 60
             pygame.display.flip()
         terminate()
+
+
+def rules():
+    global SCREEN
+    instructions = ['Сапер', '', 'Цель - открыть все клетки, кроме клетки с бомбой.',
+                    'Пользуйтесь флажками(ПКМ), чтобы их отмечать',
+                    'Чтобы выйти в главное меню из игры, нажмите Esc.', '', '', '', 'Нажмите Esc, чтобы выйти']
+    screen = SCREEN
+    w = screen.get_size()[0]
+    font = pygame.font.Font(None, 30)
+    running = True
+    text_coord = 70
+    print(screen.fill((0, 0, 0)))
+    for line in instructions:
+        string_rendered = font.render(line, 1, pygame.Color('white'))
+        intro_rect = string_rendered.get_rect()
+        text_coord += 10
+        intro_rect.top = text_coord
+        intro_rect.x = w // 2 - intro_rect.width // 2
+        text_coord += intro_rect.height
+        screen.blit(string_rendered, intro_rect)
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return
+        pygame.display.flip()
+    terminate()
 
 
 class Cell(object):
@@ -110,7 +162,7 @@ class Cell(object):
 
 class AnimatedSprite(pygame.sprite.Sprite):
     def __init__(self, sheet, columns, rows, x, y):
-        super().__init__(EXP)
+        super().__init__(WIDGETS)
         self.frames = []
         self.cut_sheet(sheet, columns, rows)
         self.cur_frame = 0
@@ -146,8 +198,9 @@ class Minesweeper(tuple):
         self.blown = []
         self.is_playing = True
         self.left = 10
-        self.top = 100
+        self.top = 50
         self.cell_size = 16
+        self.time = 0
 
     # настройка внешнего вида
     def set_view(self, left, top, cell_size):
@@ -171,15 +224,35 @@ class Minesweeper(tuple):
                     else:
                         sprite.image = load_image('empty.png', 1)
                 elif elem.is_flagged:
-                    sprite.image = load_image('flag.png', 1)
+                    if self.is_playing:
+                        sprite.image = load_image('flag.png', 1)
+                    else:
+                        if not elem.is_mine:
+                            sprite.image = load_image('fail_mine.png', 1)
+                        else:
+                            sprite.image = load_image('flag.png', 1)
                 else:
                     sprite.image = load_image('closed.png', 1)
                 sprite.rect = sprite.image.get_rect()
                 sprite.rect.x, sprite.rect.y = self.left + x * self.cell_size, self.top + self.cell_size * y
         sprite_stack.draw(SCREEN)
+        mines_num = str(self.remaining_mines % 1000).rjust(3, '0')
+        for num, i in enumerate(mines_num):
+            sprite = pygame.sprite.Sprite(WIDGETS)
+            sprite.image = load_image(i + '.png')
+            sprite.rect = sprite.image.get_rect()
+            sprite.rect.x, sprite.rect.y = SCREEN.get_size()[0] + (num + 1) * sprite.rect.width - \
+                                           (sprite.rect.width * 3 + 20), 10
+        time = str(self.time).rjust(3, '0')
+        for num, i in enumerate(time):
+            sprite = pygame.sprite.Sprite(WIDGETS)
+            sprite.image = load_image(i + '.png')
+            sprite.rect = sprite.image.get_rect()
+            sprite.rect.x, sprite.rect.y = 10 + num * sprite.rect.width, 10
         for explosion in self.blown:
             explosion.update()
         EXP.draw(SCREEN)
+        WIDGETS.draw(SCREEN)
 
     def get_cell(self, pos):
         x, y = pos
@@ -289,6 +362,9 @@ class Minesweeper(tuple):
     def is_solved(self):
         return all((cell.is_visible or cell.is_mine) for row in self for cell in row)
 
+    def set_time(self, time):
+        self.time = time
+
 
 def create_board(width, height):
     board = Minesweeper(tuple(tuple(Cell(False) for i in range(width))
@@ -380,19 +456,19 @@ def text_objects(text, font):
 
 def main():
     global GAME, EXP
+    frames = 0
     EXP = pygame.sprite.Group()
     screen = SCREEN
     started1 = False
     size, mines = LEVELS[DIFFICULTY]
-    set_resolution(size[0] * 16 + 10 * 2, size[1] * 16 + 125)
+    set_resolution(size[0] * 16 + 10 * 2, size[1] * 16 + 60)
     fps = 60
     fill = False
     GAME = create_board(size[0], size[1])
     running = True
     finish = False
     a = pygame.time.Clock()
-    return_btn = Button("<<", 5, 10, 26, 26, (127, 0, 0), (255, 100, 100), screen, StartScreen)
-    restart = Button(x=size[0] * 16 // 2 - 26 // 2, y=10, w=26, h=26,
+    restart = Button(x=size[0] * 16 // 2, y=10, w=26, h=26,
                      screen=screen, action=main, picture=True, way='restart_btn.png')
     started = False
     while running:
@@ -413,14 +489,19 @@ def main():
                         GAME.get_click(event.pos, True)
                     if event.button == 3:
                         GAME.get_click(event.pos, False)
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        StartScreen()
         screen.fill((192, 192, 192))
+        if not GAME.is_solved and GAME.is_playing:
+            frames += 1
+            GAME.set_time(frames // fps)
         if GAME.is_solved and not finish:
             restart.change_pic('restart_btn_win.png')
             finish = True
         elif not GAME.is_playing and not finish:
             restart.change_pic('restart_btn_lose.png')
             finish = True
-        return_btn.update()
         restart.update()
         GAME.render()
         a.tick(fps)
