@@ -41,8 +41,6 @@ def initialize(start=True):
         pygame.init()
         pygame.mixer.init()
         pygame.mixer.set_num_channels(100)
-        TRACK = Music('visual/track.wav')
-        CHANNEL = pygame.mixer.Channel(99)
 
 
 # установка разрешения окна
@@ -63,24 +61,6 @@ def terminate():
     sys.exit(0)
 
 
-# класс игрового трека
-class Music:
-    # инициализация
-    def __init__(self, way):
-        global CHANNEL
-        self.playing = False
-        self.way = way
-
-    # включение и выключение
-    def change_play(self):
-        if self.playing:
-            CHANNEL.stop()
-            self.playing = False
-        else:
-            CHANNEL.play(pygame.mixer.Sound(self.way), loops=-1)
-            self.playing = True
-
-
 # стартовый экран
 class StartScreen:
     # инициализация
@@ -94,7 +74,6 @@ class StartScreen:
         easy = Button('Easy', w // 2, 150, 150, 40, (0, 127, 0), (100, 255, 100), screen, main)
         medium = Button('Medium', w // 2, 200, 150, 40, (127, 127, 0), (255, 255, 100), screen, main)
         hard = Button('Hard', w // 2, 250, 150, 40, (127, 0, 0), (255, 100, 100), screen, main)
-        music = Button('Музыка', 5, 350, 100, 50, (192, 192, 192), (127, 127, 127), screen, TRACK.change_play)
         rules_btn = Button('Правила', w // 2, 300, 150, 40, (0, 127, 199), (64, 255, 255), screen, rules)
         exit = Button("Выйти", w // 2, 350, 150, 40, (0, 0, 127), (100, 100, 255), screen, terminate)
         while running:
@@ -109,7 +88,6 @@ class StartScreen:
             medium.update()
             hard.update()
             exit.update()
-            music.update()
             rules_btn.update()
             intro_rect.y = 50
             intro_rect.x = w // 2 + intro_rect.width // 2
