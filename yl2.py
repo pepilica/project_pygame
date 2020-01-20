@@ -2,6 +2,7 @@ import pygame
 import random
 import os
 import sys
+import time
 
 
 # Загрузка картинки как объекта pygame.Surface
@@ -156,6 +157,7 @@ class Cell(object):
         self.is_mine = is_mine
         self.is_visible = is_visible
         self.is_flagged = is_flagged
+        self.chosen = False
 
     # сделать данную клетку видимой
     def show(self):
@@ -240,7 +242,10 @@ class Minesweeper(tuple):
                 sprite = pygame.sprite.Sprite(sprite_stack)
                 if elem.is_visible:
                     if elem.is_mine:
-                        sprite.image = load_image('mine.png', 1)
+                        if elem.chosen:
+                            sprite.image = load_image('mine_chosen.png', 1)
+                        else:
+                            sprite.image = load_image('mine.png', 1)
                     elif GAME.count_surrounding(y, x):
                         sprite.image = load_image(f'mine{GAME.count_surrounding(y, x)}.png', 1)
                     else:
@@ -345,6 +350,7 @@ class Minesweeper(tuple):
             cell.show()
             if cell.is_mine and not cell.is_flagged:
                 self.is_playing = False
+                cell.chosen = True
                 self.blown.append(self.generate_explosion(row_id, col_id))
                 for num, row in enumerate(self):
                     for elem in row:
@@ -398,7 +404,9 @@ class Minesweeper(tuple):
                     remaining += 1
                 if cell.is_flagged:
                     remaining -= 1
-        return remaining
+        if remaining > 0:
+            return remaining
+        return 0
 
     # проверка, выиграна ли игра
     @property
