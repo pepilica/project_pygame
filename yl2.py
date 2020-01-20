@@ -407,8 +407,10 @@ def create_board(width, height):
 def create_mines(board, mines, x, y):
     if x is not None and y is not None:
         width, height = len(board[0]), len(board)
-        available_pos = list(range((height - 1) * (width - 1)))
-        available_pos.remove(y * (height - 1) + x)
+        available_pos = list(range(height * width))
+        print(x, y)
+        print(max(available_pos), y * (height - 1) + x - 1)
+        available_pos.remove(y * height + x)
         for i in range(mines):
             new_pos = random.choice(available_pos)
             available_pos.remove(new_pos)
